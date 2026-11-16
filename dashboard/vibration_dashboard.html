@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Vibration DCS Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* VOICE: clinical control-room operator display, calm until something is wrong.
+   IDEA: an ISA-101 high-performance DCS screen: grey everywhere, colour only for abnormal.
+   PICTURE: the annunciator grid of every machine, lit by its ISO 20816 condition.
+   COLOUR and TYPE: HMI grey ground, DCS blue for selection, report's status colours with shapes; IBM Plex Sans Condensed + Plex Sans.
+   LAYOUT: finding + figures band, then three operator views (status, alarms, load advisor) on tabs. */
+:root{color-scheme:light dark;
+--bg:light-dark(#dfe1e3,#16191c);--pn:light-dark(#f2f3f4,#22262a);--pn2:light-dark(#e9ebed,#2b3035);--ln:light-dark(#c4c8cc,#3a4046);
+--ink:light-dark(#1b1f23,#e3e6e9);--mut:light-dark(#596169,#9aa3ab);--sel:light-dark(#1f5f99,#79b3ea);
+--G:light-dark(#1d9a48,#3cc46a);--Y:light-dark(#d9b100,#f0cf2e);--O:light-dark(#e57a12,#ff9a3d);--R:light-dark(#d0262b,#ff5a55);--N:light-dark(#8b9299,#7b848c);
+--Rt:light-dark(#f7dcdc,#4a2224);--Ot:light-dark(#fbe6d2,#4a3220)}
+:root[data-theme=light]{color-scheme:light}:root[data-theme=dark]{color-scheme:dark}
+*{box-sizing:border-box;min-width:0}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 "IBM Plex Sans",system-ui,sans-serif;overflow-x:clip}
+h1,h2,h3,.cd{font-family:"IBM Plex Sans Condensed","IBM Plex Sans",sans-serif}
+.band{padding:clamp(20px,3vw,40px) max(4vw,16px)}.wrap{max-width:1240px;margin:0 auto}
+header{background:var(--pn);border-bottom:1px solid var(--ln)}
+.org{font-size:14px;color:var(--mut);margin:0 0 6px}
+h1{font-size:clamp(28px,4vw,44px);line-height:1.05;margin:0 0 8px;text-wrap:balance;font-weight:700}
+.sub{color:var(--mut);margin:0 0 20px;max-width:70ch}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px}
+.k{background:var(--pn2);border:1px solid var(--ln);border-radius:6px;padding:10px 12px}
+.k b{display:block;font:700 clamp(26px,3vw,34px)/1.1 "IBM Plex Sans Condensed",sans-serif;font-variant-numeric:tabular-nums}
+.k span{font-size:14px;color:var(--mut);display:flex;align-items:center;gap:6px}
+.bars{margin-top:18px;display:grid;gap:6px}
+.br{display:grid;grid-template-columns:110px 1fr 40px;gap:10px;align-items:center;font-size:14px}
+.br .t{display:flex;height:18px;gap:2px}.br .t i{display:block;height:100%;border-radius:2px}
+.br .n{text-align:right;font-variant-numeric:tabular-nums;color:var(--mut)}
+.lg{display:flex;flex-wrap:wrap;gap:14px;font-size:14px;color:var(--mut);margin-top:8px}.lg span{display:flex;gap:6px;align-items:center}
+nav{position:sticky;top:0;z-index:5;background:var(--bg);border-bottom:1px solid var(--ln)}
+nav .wrap{display:flex;gap:4px;padding:0 max(4vw,16px);overflow-x:auto}
+nav a{font:600 16px "IBM Plex Sans Condensed",sans-serif;color:var(--mut);text-decoration:none;padding:12px 14px;min-height:44px;border-bottom:3px solid transparent;white-space:nowrap;display:flex;align-items:center;gap:8px}
+nav a[aria-current=page]{color:var(--ink);border-color:var(--sel)}
+.cnt{background:var(--R);color:#fff;border-radius:10px;padding:0 7px;font-size:13px}
+.view{display:none}.view.on{display:block}
+.tools{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:16px}
+input[type=search],select{font:16px "IBM Plex Sans",sans-serif;min-height:44px;padding:8px 12px;border:1px solid var(--ln);border-radius:6px;background:var(--pn);color:var(--ink)}
+input[type=search]{flex:1 1 220px}
+.chip{font:500 14px "IBM Plex Sans",sans-serif;min-height:44px;padding:6px 12px;border:1px solid var(--ln);border-radius:22px;background:var(--pn);color:var(--ink);cursor:pointer;display:flex;align-items:center;gap:6px}
+.chip[aria-pressed=true]{border-color:var(--sel);box-shadow:inset 0 0 0 1px var(--sel);background:var(--pn2)}
+button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,.tile:focus-visible{outline:3px solid var(--sel);outline-offset:2px}
+.area{margin-bottom:22px}.area h2{font-size:22px;margin:0 0 10px;display:flex;gap:10px;align-items:baseline}.area h2 small{font:14px "IBM Plex Sans",sans-serif;color:var(--mut)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px}
+.tile{all:unset;box-sizing:border-box;cursor:pointer;background:var(--pn);border:1px solid var(--ln);border-radius:5px;padding:8px 10px;display:grid;gap:2px;min-height:76px}
+.tile.R{background:var(--Rt);border-color:var(--R)}.tile.O{background:var(--Ot);border-color:var(--O)}
+.tile.sel{box-shadow:0 0 0 2px var(--sel)}
+.tile .nm{font:600 15px/1.2 "IBM Plex Sans Condensed",sans-serif}.tile .tg{font-size:13px;color:var(--mut);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tile .st{display:flex;justify-content:space-between;align-items:center;font-size:13px;gap:6px}.tile .v{font-variant-numeric:tabular-nums;white-space:nowrap;font-weight:600}
+.sh{width:12px;height:12px;flex:none;display:inline-block}
+.lay{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:18px;align-items:start}
+.det{position:sticky;top:64px;background:var(--pn);border:1px solid var(--ln);border-radius:6px;padding:16px}
+.det h3{margin:0 0 4px;font-size:20px;line-height:1.2}.det p{margin:6px 0;font-size:15px}.det .m{color:var(--mut);font-size:14px}
+.rd{display:grid;gap:8px;margin:12px 0}.rd .l{display:flex;justify-content:space-between;font-size:14px}.rd .l b{font-variant-numeric:tabular-nums;white-space:nowrap}
+.sc{position:relative;height:14px;background:linear-gradient(90deg,color-mix(in srgb,var(--G) 22%,transparent) 0 11.67%,color-mix(in srgb,var(--Y) 25%,transparent) 11.67% 23.33%,color-mix(in srgb,var(--O) 25%,transparent) 23.33% 37.5%,color-mix(in srgb,var(--R) 22%,transparent) 37.5%);border-radius:3px}
+.sc i{position:absolute;left:0;top:3px;height:8px;background:var(--ink);border-radius:0 4px 4px 0}
+.sc em{position:absolute;right:2px;top:-3px;font:700 13px sans-serif;color:var(--ink)}
+.al{display:grid;gap:8px}
+.ar{display:grid;grid-template-columns:120px minmax(0,1fr) 110px 96px;gap:14px;align-items:center;background:var(--pn);border:1px solid var(--ln);border-left:6px solid var(--N);border-radius:5px;padding:10px 14px}
+.ar.R{border-left-color:var(--R)}.ar.O{border-left-color:var(--O)}.ar.Y{border-left-color:var(--Y)}.ar.ack{opacity:.62}
+.ar .sv{display:flex;gap:6px;align-items:center;font:600 15px "IBM Plex Sans Condensed",sans-serif}
+.ar .tx b{font-family:"IBM Plex Sans Condensed",sans-serif}.ar .tx div{font-size:14px;color:var(--mut)}
+.ar .vv{text-align:right;font:700 20px "IBM Plex Sans Condensed",sans-serif;font-variant-numeric:tabular-nums;white-space:nowrap}.ar .vv small{display:block;font:13px "IBM Plex Sans",sans-serif;color:var(--mut)}
+.btn{font:600 14px "IBM Plex Sans",sans-serif;min-height:44px;padding:6px 12px;border:1px solid var(--ln);border-radius:6px;background:var(--pn2);color:var(--ink);cursor:pointer}
+.adv{display:grid;grid-template-columns:300px minmax(0,1fr);gap:18px;align-items:start}
+.ctl{background:var(--pn);border:1px solid var(--ln);border-radius:6px;padding:16px;display:grid;gap:14px}
+.ctl label{font-size:14px;color:var(--mut);display:grid;gap:6px}
+.big{font:700 clamp(40px,6vw,60px)/1 "IBM Plex Sans Condensed",sans-serif;font-variant-numeric:tabular-nums;color:var(--ink)}
+input[type=range]{width:100%;accent-color:var(--sel);min-height:44px}
+.res{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px;margin-bottom:14px}
+.res .k b{font-size:30px}
+table{width:100%;border-collapse:collapse;background:var(--pn);border:1px solid var(--ln);border-radius:6px;font-size:14px}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--ln);vertical-align:top}th{font:600 14px "IBM Plex Sans Condensed",sans-serif;color:var(--mut)}
+td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.tags{display:flex;flex-wrap:wrap;gap:4px}.tag{display:inline-flex;gap:4px;align-items:center;border:1px solid var(--ln);border-radius:4px;padding:1px 6px;font-size:13px;white-space:nowrap;background:var(--pn2)}
+.rule{width:52px;font:15px "IBM Plex Sans",sans-serif;min-height:36px;padding:4px;border:1px solid var(--ln);border-radius:4px;background:var(--pn);color:var(--ink);text-align:right}
+.ok{display:flex;gap:6px;align-items:center;white-space:nowrap;font-weight:600}
+.note{font-size:14px;color:var(--mut);margin-top:12px;max-width:80ch}
+.warn{background:var(--pn);border:1px solid var(--ln);border-left:6px solid var(--O);border-radius:5px;padding:10px 14px;margin:0 0 14px;font-size:15px}
+.scroll{overflow-x:auto}
+@media(max-width:900px){.lay,.adv{grid-template-columns:minmax(0,1fr)}.det{position:static}}
+@media(max-width:600px){nav a{padding:12px 8px;font-size:15px}nav .wrap{padding:0 8px}.ar{grid-template-columns:minmax(0,1fr) auto}.ar .tx{grid-column:1/-1;grid-row:2}.ar .btn{grid-column:1/-1}
+ table{font-size:13px}.stack thead{display:none}.stack tr{display:grid;padding-block:8px;border-bottom:1px solid var(--ln)}.stack td{display:flex;justify-content:space-between;gap:12px;border:0;padding:4px 10px}.stack td::before{content:attr(data-l);color:var(--mut);flex:none}}
+@media(prefers-reduced-motion:no-preference){.tile.R .sh{animation:bl 1.2s steps(2,start) infinite}@keyframes bl{to{opacity:.25}}}
+</style>
+</head>
+<body>
+<header class="band"><div class="wrap">
+<p class="org">Saudi Energy · Condition monitoring · Vibration Group</p>
+<h1 id="ttl">Vibration status before T&amp;I</h1>
+<p class="sub" id="sub"></p>
+<div class="kpis" id="kpis"></div>
+<div class="bars" id="bars"></div>
+<div class="lg" id="lg"></div>
+</div></header>
+<nav><div class="wrap">
+<a href="#status" data-v="status">Machine status</a>
+<a href="#alarms" data-v="alarms">Alarms <span class="cnt" id="acnt"></span></a>
+<a href="#advisor" data-v="advisor">DCS load advisor</a>
+</div></nav>
+<main class="band"><div class="wrap">
+
+<section class="view" id="v-status">
+<div class="tools">
+<input type="search" id="q" placeholder="Search equipment, tag or finding" aria-label="Search equipment">
+<select id="fa" aria-label="Area"><option value="">All areas</option></select>
+<div id="fc" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+</div>
+<div class="lay"><div id="areas"></div>
+<aside class="det" id="det" aria-live="polite"><p class="m">Select a machine to see its readings, finding and recommendation.</p></aside></div>
+</section>
+
+<section class="view" id="v-alarms">
+<div class="tools">
+<select id="aa" aria-label="Area"><option value="">All areas</option></select>
+<button class="chip" id="ay" aria-pressed="false">Include Yellow (alert)</button>
+<button class="chip" id="ah" aria-pressed="false">Hide acknowledged</button>
+<button class="btn" id="aall">Acknowledge all shown</button>
+<button class="btn" id="arst">Reset</button>
+</div>
+<div class="al" id="alist"></div>
+</section>
+
+<section class="view" id="v-advisor">
+<div class="adv">
+<div class="ctl">
+<label>Area<select id="du"></select></label>
+<label>Target load <span class="big" id="lv">80%</span><input type="range" id="ld" min="0" max="100" step="5" value="80" aria-label="Target load percent"></label>
+<button class="chip" id="ar" aria-pressed="false">Allow Red machines (emergency only)</button>
+<p class="note" style="margin:0">Machines are picked for duty in this order: Green, Yellow, Not evaluated, Orange. Lowest vibration wins a tie. Red machines are left out unless you allow them.</p>
+</div>
+<div>
+<div class="res" id="res"></div>
+<div id="wn"></div>
+<div class="scroll"><table class="stack"><thead><tr><th>Service</th><th>Inst.</th><th>Full-load duty</th><th>Min running</th><th>Needed</th><th>Run</th><th>Standby / do not run</th><th>Status</th></tr></thead><tbody id="tb"></tbody></table></div>
+<p class="note">The duty counts are assumed defaults, not plant data. Change them to match your plant's operating philosophy. The page remembers your changes in this browser. Standby, emergency and start-up services (lube oil, emergency seal oil, ignitor fans, fuel oil) are checked for readiness and are not load-scaled.</p>
+</div></div>
+</section>
+
+<p class="note">Source: Vibration Reports Before T&amp;I.xlsx (Unit 03, Unit 04, Common PH#2). Condition colours come from the report's ISO 20816 assessment. The bands behind each reading are an ISO 20816-3 Group 2 rigid-foundation reference (1.4 / 2.8 / 4.5 mm/s), shown for context only.</p>
+</div></main>
+<script>
+{
+const D=[{"a":"U04","n":1,"e":"Motor, A.C Jacking Oil Pump 401","fl":"2320-2-04-LO -W824LOAJP401M","g":"LOAJP","f":"Not Evaluated","rec":"Not Evaluated","c":"N","rd":[]},{"a":"U04","n":2,"e":"Pump, Mt D.C Jacking Oil #401","fl":"2320-4-04-LO -W824LODJP401","g":"LODJP","f":"Not Evaluated","rec":"Not Evaluated","c":"N","rd":[]},{"a":"U04","n":3,"e":"Motor, Circulating Water Pump 401","fl":"2320-2-04-CW -W824CWCWP401M","g":"CWCWP","f":"Accepted","rec":"Stable and safe for operation","c":"G","rd":[["Motor NDE A",1.0],["Motor DE H",1.0]]},{"a":"U04","n":4,"e":"Motor, Circulating Water Pump 402","fl":"2320-2-04-CW -W824CWCWP402M","g":"CWCWP","f":"Accepted","rec":"Stable and safe for operation","c":"G","rd":[["Motor NDE V",1.3],["Motor DE V",0.8]]},{"a":"U04","n":5,"e":"Motor, Circulating Water Pump 403","fl":"2320-2-04-CW -W824CWCWP403M","g":"CWCWP","f":"Accepted","rec":"Stable and safe for operation","c":"G","rd":[["Motor NDE H",2.4],["Motor DE H",1.6]]},{"a":"U04","n":6,"e":"Motor, Circulating Water Pump 404","fl":"2320-2-04-CW -W824CWCWP404M","g":"CWCWP","f":"Accepted","rec":"Stable and safe for operation","c":"G","rd":[["Motor NDE A",1.6],["Motor DE H",1.2]]},{"a":"U04","n":7,"e":"Fan, Forced Draft, Centrifugal 401","fl":"2320-2-04-FD -W824FDFDF401","g":"FDFDF","f":"Accepted with minor unbalance","rec":"Stable and safe for operation","c":"Y","rd":[["Motor DE H",2.6],["Fan NDE H",2.7]]},{"a":"U04","n":8,"e":"Fan, Forced Draft, Centrifugal 402","fl":"2320-2-04-FD -W824FDFDF402","g":"FDFDF","f":"Accepted with minor Misalignment","rec":"Stable and safe for operation","c":"G","rd":[["Motor DE A",2.2],["Fan NDE H",1.9]]},{"a":"U04","n":9,"e":"Fan, Gas Recirculation # 401","fl":"2320-2-04-FD -W824FDGRF401","g":"FDGRF","f":"Accepted with minor motor bearing fault","rec":"Stable and safe for operation","c":"G","rd":[["Motor DE A",1.3],["Fan NDE H",1.7]]},{"a":"U04","n":10,"e":"Fan, Gas Recirculation # 402","fl":"2320-2-04-FD -W824FDGRF402","g":"FDGRF","f":"Axial vibration on fan bearing due to misalignment","rec":"Check the coupling and alignment","c":"O","rd":[["Motor NDE H",1.6],["Fan DE A",4.0]]},{"a":"U04","n":11,"e":"Fan, Flame Scanner 401","fl":"2320-2-04-SC -W824SCFSF401","g":"SCFSF","f":"Accepted with minor unbalance and looseness","rec":"Stable and safe for operation","c":"Y","rd":[["Motor NDE H",3.5],["Motor DE H",3.3]]},{"a":"U04","n":12,"e":"Fan, Flame Scanner 402","fl":"2320-2-04-SC -W824SCFSF402","g":"SCFSF","f":"Not Evaluated","rec":"Not Evaluated","c":"N","rd":[]},{"a":"U04","n":13,"e":"Fan, Ignitor Booster 401","fl":"2320-2-04-SC -W824SCIBF401","g":"SCIBF","f":"Accepted","rec":"Stable and safe for operation","c":"G","rd":[["Motor NDE A",0.9],["Fan NDE H",0.9]]},{"a":"U04","n":14,"e":"Fan, Ignitor Booster402","fl":"2320-2-04-SC -W824SCIBF402","g":"SCIBF","f":"Not Evaluated","rec":"Not Evaluated","c":"N","rd":[]},{"a":"U04","n":15,"e":"Preheater, Air, Regenerative # 401","fl":"2320-2-04-FD -W824FDARH401","g":"FDARH","f":"Motor has high vibration","rec":"Need to decouple the motor","c":"R","rd":[["Motor NDE A",8.0],["Motor DE A",8.0]]},{"a":"U04","n":16,"e":"Preheater, Air, Regenerative #402","fl":"2320-2-04-FD -W824FDARH402","g":"FDARH","f":"Motor has high vibration","rec":"Need to decouple the motor","c":"R","rd":[["Motor NDE A",15.0],["Motor DE H",16.0]]},{"a":"U04","n":17,"e":"Pump,Condenser Main Air Extraction#401","fl":"2320-2-04-AE -W824AECAP401","g":"AECAP","f":"Accepted","rec":"Stable and safe for operation","c":"G","rd":[["Motor DE A",0.8],["Pump DE H",1.3]]},{"a":"U04","n":18,"e":"Pump,Condenser Main Air Extraction#402","fl":"2320-2-04-AE -W824AECAP402","g":"AECAP","f":"Accepted","rec":"Stable and safe for operation","c":"G","rd":[["Motor NDE V",1.0],["Pump DE V",1.6]]},{"a":"U04","n":19,"e":"Pump,Condenser Main Air Extraction#403","fl":"2320-2-04-AE -W824AECAP403","g":"AECAP","f":"Accepted","rec":"Stable and safe for operation","c":"G","rd":[["Motor DE A",0.7],["Pump DE H",1.4]]},{"a":"U04","n":20,"e":"Pump, Condensate Extraction #401","fl":"2320-2-04-CD -W824CDCDP401","g":"CDCDP","f":"Motor has high vibration and Pump failure","rec":"Decouple the motor and send the pump for overhaul","c":"R","rd":[["Motor NDE H",15.0],["Motor DE H",8.0]]},{"a":"U04","n":21,"e":"Pump, Condensate Extraction #402","fl":"2320-2-04-CD -W824CDCDP402","g":"CDCDP","f":"Motor has moderate vibration","rec":"Need to decouple the motor","c":"O","rd":[["Motor NDE A",4.6],["Motor DE A",1.4]]},{"a":"U04","n":22,"e":"Pump, Condensate Extraction #403","fl":"2320-2-04-CD -W824CDCDP403","g":"CDCDP","f":"Motor has high vibration","rec":"Need to decouple the motor","c":"R","rd":[["Motor NDE V",8.0],["Motor DE V",3.6]]},{"a":"U04","n":23,"e":"Pump, Mt A.C Auxiliary Oil Pump","fl":"2320-2-04-LO -W824LOAMP401","g":"LOAMP","f":"Not Evaluated","rec":"Not Evaluated","c":"N","rd":[]},{"a":"U04","n":24,"e":"Pump, Mt A.C Turning Oil Pump","fl":"2320-2-04-LO -W824LOATP401","g":"LOATP","f":"Not Evaluated","rec":"Not Evaluated","c":"N","rd":[]},{"a":"U04","n":25,"e":"Pump, Mt D.C Emergency Oil","fl":"2320-2-04-LO -W824LODBP401","g":"LODBP","f":"Not Evaluated","rec":"Not Evaluated","c":"N","rd":[]},{"a":"U04","n":26,"e":"Pump, Air Side Seal Oil #401.","fl":"2320-2-04-SO -W824SOASP401","g":"SOASP","f":"Accepted with minor bearing fault","rec":"Stable and safe for operation","c":"G","rd":[["Motor NDE H",1.1],["Pump DE H",2.2]]},{"a":"U04","n":27,"e":"Pump, Air Side Seal Oil. #402","fl":"2320-2-04-SO -W824SOASP402","g":"SOASP","f":"Not Evaluated","rec":"Not Evaluated","c":"N","rd":[]},{"a":"U04","n":28,"e":"Pump, Emergency Seal Oil #401","fl":"2320-2-04-SO -W824SOESP401","g":"SOESP","f":"Not Evaluated","rec":"Not Evaluated","c":"N","rd":[]},{"a":"U04","n":29,"e":"Pump, No.7 Lp Heater Drain #401","fl":"2320-2-04-HD -W824HDLPP401","g":"HDLPP","f":"Accepted with minor bearing fault","rec":"Stable and safe for operation","c":"G","rd":[["Motor NDE H",0.9],["Pump DE H",0.9]]},{"a":"U04","n":30,"e":"Pump,No. 7 Lp Heater Drain #402","fl":"2320-2-04-HD -W824HDLPP402","g":"HDLPP","f":"Not Evaluated","rec":"Not Evaluated","c":"N","rd":[]},{"a":"U04","n":31,"e":"Pump, Hydrogen Side Seal Oil.#401","fl":"2320-2-04-SO -W824SOHSP401","g":"SOHSP","f":"Not Evaluated","rec":"Not Evaluated","c":"N","rd":[]},{"a":"U04","n":32,"e":"Fan,Gs Steam Condenser Exhauster #401","fl":"2320-2-04-AE -W824AEGSF401","g":"AEGSF","f":"Accepted","rec":"Stable and safe for operation","c":"Y","rd":[["Motor NDE H",2.8],["Motor DE H",2.2]]},{"a":"U04","n":33,"e":"Fan,Gs Steam Condenser Exhauster #402","fl":"2320-2-04-AE -W824AEGSF402","g":"AEGSF","f":"Accepted","rec":"Stable and safe for operation","c":"G","rd":[["Motor NDE A",1.48],["Motor DE H",1.0]]},{"a":"U03","n":1,"e":"Motor, A.C Jacking Oil Pump 301","fl":"2320-2-03-LO -W823LOAJP301M","g":"LOAJP","f":"Not Evaluated","rec":"Not Evaluated","c":"N","rd":[]},{"a":"U03","n":2,"e":"Pump, Mt D.C Jacking Oil #301","fl":"2320-2-03-LO -W823LODJP301","g":"LODJP","f":"Pump has high vibration due to Van pass Frequancy","rec":"Make overhauling for motor and Pump","c":"R","rd":[["Motor DE H",4.5],["Pump DE V",110.0]]},{"a":"U03","n":3,"e":"Motor, Circulating Water Pump 301","fl":"2320-2-03-CW -W823CWCWP301M","g":"CWCWP","f":"Motor has high vibration due to flow turbulence","rec":"Need to check operating condition for the flow","c":"R","rd":[["Motor NDE V",4.5],["Motor DE H",6.0]]},{"a":"U03","n":4,"e":"Motor, Circulating Water Pump 302","fl":"2320-2-03-CW -W823CWCWP302M","g":"CWCWP","f":"Motor has mid vibration due to flow turbulence","rec":"Need to check the condition for the flow","c":"O","rd":[["Motor NDE H",3.3],["Motor DE H",4.0]]},{"a":"U03","n":5,"e":"Motor, Circulating Water Pump 303","fl":"2320-2-03-CW -W823CWCWP303M","g":"CWCWP","f":"Motor has high vibration due to flow turbulence","rec":"Need to check the condition for the flow","c":"Y","rd":[["Motor NDE A",2.4],["Motor DE A",1.7]]},{"a":"U03","n":6,"e":"Motor, Circulating Water Pump 304","fl":"2320-2-03-CW -W823CWCWP304M","g":"CWCWP","f":"Accepted","rec":"Stable and safe for operation","c":"G","rd":[["Motor NDE A",1.4],["Motor DE H",1.2]]},{"a":"U03","n":7,"e":"Fan, Forced Draft, Centrifugal 301","fl":"2320-2-03-FD -W823FDFDF301","g":"FDFDF","f":"Accepted with minor Misalignment","rec":"Stable and safe for operation","c":"Y","rd":[["Motor DE A",3.1],["Fan NDE H",1.2]]},{"a":"U03","n":8,"e":"Fan, Forced Draft, Centrifugal 302","fl":"2320-2-03-FD -W823FDFDF302","g":"FDFDF","f":"Accepted","rec":"Stable and safe for operation","c":"G","rd":[["Motor DE H",2.4],["Fan NDE H",1.5]]},{"a":"U03","n":9,"e":"Fan, Gas Recirculation # 301","fl":"2320-2-03-FD -W823FDGRF301","g":"FDGRF","f":"Accepted with minor flow turbulence","rec":"Stable and safe for operation","c":"Y","rd":[["Motor DE H",1.9],["Fan NDE V",2.7]]},{"a":"U03","n":10,"e":"Fan, Gas Recirculation # 302","fl":"2320-2-03-FD -W823FDGRF302","g":"FDGRF","f":"Axial vibration on fan bearing due to misalignment","rec":"Check the coupling and alignment","c":"R","rd":[["Motor DE H",2.0],["Fan DE V",5.0]]},{"a":"U03","n":11,"e":"Fan, Flame Scanner 301","fl":"2320-2-03-SC -W823SCFSF301","g":"SCFSF","f":"Motor has high vibration","rec":"Make overhauling for motor and fan","c":"R","rd":[["Motor NDE A",37.5],["Motor DE A",41.0]]},{"a":"U03","n":12,"e":"Fan, Flame Scanner 302","fl":"2320-2-03-SC -W823SCFSF302","g":"SCFSF","f":"Motor has high vibration","rec":"Make overhauling for motor and fan","c":"R","rd":[["Motor NDE A",8.0],["Motor DE A",9.0]]},{"a":"U03","n":13,"e":"Fan, Ignitor Booster 301","fl":"2320-2-03-SC -W823SCIBF301","g":"SCIBF","f":"Accepted","rec":"Stable and safe for operation","c":"G","rd":[["Motor NDE H",0.9],["Motor DE H",0.8]]},{"a":"U03","n":14,"e":"Fan, Ignitor Booster302","fl":"2320-2-03-SC -W823SCIBF302","g":"SCIBF","f":"Accepted","rec":"Stable and safe for operation","c":"G","rd":[["Motor NDE H",1.8],["Motor DE A",2.0]]},{"a":"U03","n":15,"e":"Preheater, Air, Regenerative # 301","fl":"2320-2-03-FD -W823FDARH301","g":"FDARH","f":"Motor has high vibration","rec":"Need to decouple the motor","c":"R","rd":[["Motor NDE V",8.0],["Motor DE V",10.0]]},{"a":"U03","n":16,"e":"Preheater, Air, Regenerative #302","fl":"2320-2-03-FD -W823FDARH302","g":"FDARH","f":"Motor has high vibration","rec":"Need to decouple the motor","c":"R","rd":[["Motor NDE A",17.0],["Motor DE V",29.0]]},{"a":"U03","n":17,"e":"Pump,Condenser Main Air Extraction#301","fl":"2320-2-03-AE -W823AECAP301","g":"AECAP","f":"Accepted","rec":"Stable and safe for operation","c":"G","rd":[["Motor DE A",1.5],["Pump NDE H",1.7]]},{"a":"U03","n":18,"e":"Pump,Condenser Main Air Extraction#302","fl":"2320-2-03-AE -W823AECAP302","g":"AECAP","f":"Accepted","rec":"Need to check Motor Uncouple","c":"Y","rd":[["Motor DE A",2.6],["Pump NDE H",1.5]]},{"a":"U03","n":19,"e":"Pump,Condenser Main Air Extraction#303","fl":"2320-2-03-AE -W823AECAP303","g":"AECAP","f":"Accepted","rec":"Stable and safe for operation","c":"G","rd":[["Motor DE A",1.2],["Pump NDE H",2.1]]},{"a":"U03","n":20,"e":"Pump, Condensate Extraction #301","fl":"2320-2-03-CD -W823CDCDP301","g":"CDCDP","f":"Motor has moderate vibration","rec":"Need to decouple the motor","c":"O","rd":[["Motor NDE V",4.8],["Motor DE V",2.4]]},{"a":"U03","n":21,"e":"Pump, Condensate Extraction #302","fl":"2320-2-03-CD -W823CDCDP302","g":"CDCDP","f":"Motor has high vibration","rec":"Need to decouple the motor","c":"R","rd":[["Motor NDE V",12.0],["Motor DE V",2.9]]},{"a":"U03","n":22,"e":"Pump, Condensate Extraction #303","fl":"2320-2-03-CD -W823CDCDP303","g":"CDCDP","f":"Motor has moderate vibration","rec":"Need to decouple the motor","c":"O","rd":[["Motor NDE V",4.9],["Motor DE V",3.9]]},{"a":"U03","n":23,"e":"Pump, Mt A.C Auxiliary Oil Pump","fl":"2320-2-03-LO -W823LOAMP301","g":"LOAMP","f":"Motor has high vibration suspected bearing or screw mesh frequency","rec":"Need to decouple the motor","c":"R","rd":[["Motor NDE V",19.0],["Motor DE H",12.0]]},{"a":"U03","n":24,"e":"Pump, Mt A.C Turning Oil Pump","fl":"2320-2-03-LO -W823LOATP301","g":"LOATP","f":"Motor has moderate vibration","rec":"Need to check Motor Uncouple","c":"O","rd":[["Motor DE H",3.9],["Motor NDE H",3.9]]},{"a":"U03","n":25,"e":"Pump, Mt D.C Emergency Oil","fl":"2320-2-03-LO -W823LODBP301","g":"LODBP","f":"Motor has high vibration due to bearing fault","rec":"Need to decouple the motor","c":"R","rd":[["Motor NDE V",2.7],["Motor DE A",11.0]]},{"a":"U03","n":26,"e":"Pump, Air Side Seal Oil #301.","fl":"2320-2-03-SO -W823SOASP301","g":"SOASP","f":"Motor and pump have high vibration","rec":"Send them to overhauling","c":"R","rd":[["Motor NDE V",9.0],["Pump DE H",17.0]]},{"a":"U03","n":27,"e":"Pump, Air Side Seal Oil. #302","fl":"2320-2-03-SO -W823SOASP302","g":"SOASP","f":"Motor and pump have high vibration","rec":"Send them to overhauling","c":"R","rd":[["Motor NDE A",16.0],["Pump DE H",12.0]]},{"a":"U03","n":28,"e":"Pump, Emergency Seal Oil #301","fl":"2320-2-03-SO -W823SOESP301","g":"SOESP","f":"Motor and pump have high vibration","rec":"Send them to overhauling","c":"R","rd":[["Motor NDE H",5.0],["Pump DE V",8.0]]},{"a":"U03","n":29,"e":"Fan,Gs Steam Condenser Exhauster #301","fl":"2320-2-03-AE -W823AEGSF301","g":"AEGSF","f":"Accepted","rec":"Stable and safe for operation","c":"Y","rd":[["Motor NDE H",3.1],["Motor DE H",3.3]]},{"a":"U03","n":30,"e":"Fan,Gs Steam Condenser Exhauster #302","fl":"2320-2-03-AE -W823AEGSF302","g":"AEGSF","f":"Motor has moderate vibration","rec":"Stable and safe for operation","c":"O","rd":[["Motor NDE A",4.5],["Motor DE H",4.8]]},{"a":"U03","n":31,"e":"Pump, No.7 Lp Heater Drain #301","fl":"2320-2-03-HD -W823HDLPP301","g":"HDLPP","f":"Accepted","rec":"Stable and safe for operation","c":"G","rd":[["Motor NDE H",0.9],["Pump DE H",1.0]]},{"a":"U03","n":32,"e":"Pump,No. 7 Lp Heater Drain #302","fl":"2320-2-03-HD -W823HDLPP302","g":"HDLPP","f":"Accepted","rec":"Stable and safe for operation","c":"G","rd":[["Motor DE A",2.0],["Pump DE A",1.5]]},{"a":"U03","n":33,"e":"Pump, Hydrogen Side Seal Oil.#301","fl":"2320-2-03-SO -W823SOHSP301","g":"SOHSP","f":"Motor and pump have high vibration","rec":"Send them to overhauling","c":"R","rd":[["Motor NDE H",10.0],["Pump NDE V",12.0]]},{"a":"U03","n":34,"e":"Pump, Fuel Oil #301","fl":"2320-2-03-FO -W823FOFOP301","g":"FOFOP","f":"Not Evaluated","rec":"Not Evaluated","c":"N","rd":[]},{"a":"U03","n":35,"e":"Pump, Fuel Oil #302","fl":"2320-2-03-FO -W823FOFOP302","g":"FOFOP","f":"Not Evaluated","rec":"Not Evaluated","c":"N","rd":[]},{"a":"CPH2","n":1,"e":"Pump, Bearing & Seal Water #801","fl":"2320-2-34-SS -W828SSBSP801","g":"SSBSP","f":"Accepted","rec":"Stable and safe for operation","c":"G","rd":[["Motor NDE H",0.5],["Pump DE H",1.9]]},{"a":"CPH2","n":2,"e":"Pump,Bearing & Seal Water #802","fl":"2320-2-34-SS -W828SSBSP802","g":"SSBSP","f":"Not Evaluated","rec":"Not Evaluated","c":"N","rd":[]},{"a":"CPH2","n":3,"e":"Pump,Bearing & Seal Water #803","fl":"2320-2-34-SS -W828SSBSP803","g":"SSBSP","f":"Accepted with misalignment and coupling fault","rec":"Stable and safe for operation","c":"Y","rd":[["Motor DE H",0.6],["Pump DE H",3.0]]},{"a":"CPH2","n":4,"e":"Pump,Service Seawater 801","fl":"2320-2-34-SS -W828SSSSP801","g":"SSSSP","f":"Accepted","rec":"Stable and safe for operation","c":"Y","rd":[["Motor NDE H",2.0],["Motor DE A",2.9]]},{"a":"CPH2","n":5,"e":"Pump,Service Seawater 802","fl":"2320-2-34-SS -W828SSSSP802","g":"SSSSP","f":"Motor has high vibration due to flow turbulence","rec":"Need to check the condition for the flow","c":"Y","rd":[["Motor NDE V",3.6],["Motor DE H",2.3]]},{"a":"CPH2","n":6,"e":"Pump,Service Seawater 803","fl":"2320-2-34-SS -W828SSSSP803","g":"SSSSP","f":"Motor has high vibration","rec":"Need to check Motor Uncouple tesr","c":"R","rd":[["Motor NDE V",6.0],["Motor DE V",3.3]]},{"a":"CPH2","n":7,"e":"Pump,Service Seawater 804","fl":"2320-2-34-SS -W828SSSSP804","g":"SSSSP","f":"Not Evaluated","rec":"Not Evaluated","c":"N","rd":[]},{"a":"CPH2","n":8,"e":"Pump,Screen Wash #801,Vertical","fl":"2320-2-34-SS -W828SSSWP801","g":"SSSWP","f":"Accepted","rec":"Stable and safe for operation","c":"Y","rd":[["Motor NDE H",3.6],["Motor DE H",2.3]]},{"a":"CPH2","n":9,"e":"Pump,Screen Wash #802,Vertical","fl":"2320-2-34-SS -W828SSSWP802","g":"SSSWP","f":"Motor has high vibration due to flow turbulence","rec":"Need to check the condition for the flow","c":"G","rd":[["Motor NDE V",0.6],["Motor DE A",0.3]]},{"a":"CPH2","n":10,"e":"Pump,Screen Wash #803,Vertical","fl":"2320-2-34-SS -W828SSSWP803","g":"SSSWP","f":"Motor has high vibration","rec":"Need to check Pump reassembly with all condition clearances","c":"R","rd":[["Motor NDE V",12.0],["Motor DE V",5.0]]},{"a":"CPH2","n":11,"e":"Pump,Screen Wash #804,Vertical","fl":"2320-2-34-SS -W828SSSWP804","g":"SSSWP","f":"Motor has high vibration","rec":"Pump need to check","c":"R","rd":[["Motor NDE A",8.0],["Motor DE A",7.0]]},{"a":"CPH2","n":12,"e":"Pump,Closed Circuit Cooling Water #801","fl":"2320-2-34-CC -W828CCCCP801","g":"CCCCP","f":"Motor has high vibration","rec":"Make overhauling for motor and fan","c":"Y","rd":[["Motor NDE V",1.8],["Pump DE A",2.5]]},{"a":"CPH2","n":13,"e":"Pump,Closed Circuit Cooling Water #802","fl":"2320-2-34-CC -W828CCCCP802","g":"CCCCP","f":"Accepted","rec":"Stable and safe for operation","c":"G","rd":[["Motor NDE H",1.2],["Pump DE A",2.0]]},{"a":"CPH2","n":14,"e":"Pump,Closed Circuit Cooling Water #803","fl":"2320-2-34-CC -W828CCCCP803","g":"CCCCP","f":"Accepted with misalignment and coupling fault With vane pass frequency","rec":"Stable and safe for operation","c":"Y","rd":[["Motor NDE H",1.8],["Pump DE A",3.4]]}];
+const AREA={U03:"Unit 03",U04:"Unit 04",CPH2:"Common PH#2"};
+const CN={G:"Green · Accepted",Y:"Yellow · Alert",O:"Orange · Warning",R:"Red · Danger",N:"Not evaluated"};
+const CS={G:"Green",Y:"Yellow",O:"Orange",R:"Red",N:"Not evaluated"};
+const RANK={G:0,Y:1,N:2,O:3,R:4};
+const GN={CWCWP:["Circulating water pumps","CW pump"],CDCDP:["Condensate extraction pumps","CEP"],FDFDF:["Forced draft fans","FD fan"],FDGRF:["Gas recirculation fans","GR fan"],FDARH:["Air preheaters","APH"],AECAP:["Condenser air extraction pumps","Air extr. pump"],SCFSF:["Flame scanner fans","Scanner fan"],SCIBF:["Ignitor booster fans","Ignitor fan"],AEGSF:["Gland steam exhausters","GS exhauster"],HDLPP:["No.7 LP heater drain pumps","LP drain pump"],SOASP:["Air-side seal oil pumps","Seal oil (air)"],SOHSP:["H2-side seal oil pump","Seal oil (H2)"],SOESP:["Emergency seal oil pump","Emerg. seal oil"],LOAJP:["AC jacking oil pump","AC jacking oil"],LODJP:["DC jacking oil pump","DC jacking oil"],LOAMP:["AC auxiliary oil pump","AC aux oil"],LOATP:["AC turning oil pump","AC turning oil"],LODBP:["DC emergency oil pump","DC emerg. oil"],FOFOP:["Fuel oil pumps","Fuel oil pump"],SSBSP:["Bearing & seal water pumps","B&S water pump"],SSSSP:["Service seawater pumps","Seawater pump"],SSSWP:["Screen wash pumps","Screen wash"],CCCCP:["Closed cooling water pumps","CCCW pump"]};
+const RULE0={CWCWP:[3,2],CDCDP:[2,1],FDFDF:[2,1],FDGRF:[2,1],FDARH:[2,1],AECAP:[2,1],SCFSF:[1,1],AEGSF:[1,1],HDLPP:[1,1],SOASP:[1,1],SSBSP:[2,1],SSSSP:[3,2],SSSWP:[2,1],CCCCP:[2,1]};
+const store={get(k,d){try{const v=localStorage.getItem("vg-"+k);return v?JSON.parse(v):d}catch(e){return d}},set(k,v){try{localStorage.setItem("vg-"+k,JSON.stringify(v))}catch(e){}}};
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+D.forEach((d,i)=>{d.id=d.a+"-"+d.n;const m=d.fl.replace(/\s/g,"").match(/(\d{3})M?$/);d.no=m?m[1]:String(d.n);d.sn=(GN[d.g]?GN[d.g][1]:d.e)+" "+d.no;
+ d.mx=d.rd.length?Math.max(...d.rd.map(r=>r[1])):null;d.mp=d.rd.length?d.rd.reduce((a,b)=>b[1]>a[1]?b:a)[0]:"";});
+const shape=c=>{const f=`var(--${c})`;return c==="G"?`<svg class="sh" viewBox="0 0 12 12" aria-hidden="true"><circle cx="6" cy="6" r="5.5" fill="${f}"/></svg>`
+:c==="Y"?`<svg class="sh" viewBox="0 0 12 12" aria-hidden="true"><path d="M6 .5 11.5 11.5H.5z" fill="${f}"/></svg>`
+:c==="O"?`<svg class="sh" viewBox="0 0 12 12" aria-hidden="true"><path d="M6 0 12 6 6 12 0 6z" fill="${f}"/></svg>`
+:c==="R"?`<svg class="sh" viewBox="0 0 12 12" aria-hidden="true"><rect width="12" height="12" rx="1" fill="${f}"/><path d="M6 2.5v4.5M6 8.6v1" stroke="#fff" stroke-width="1.8"/></svg>`
+:`<svg class="sh" viewBox="0 0 12 12" aria-hidden="true"><circle cx="6" cy="6" r="4.6" fill="none" stroke="${f}" stroke-width="1.8"/></svg>`};
+const cnt=(arr,c)=>arr.filter(d=>d.c===c).length;
+/* header */
+const red=cnt(D,"R"),ev=D.length-cnt(D,"N"),u3r=cnt(D.filter(d=>d.a==="U03"),"R");
+document.getElementById("ttl").textContent=`${red} machines in Danger before T&I, ${u3r} of them in Unit 03`;
+document.getElementById("sub").textContent=`${D.length} machines across Unit 03, Unit 04 and Common PH#2. ${ev} were evaluated. ${cnt(D,"R")+cnt(D,"O")} need action (Orange or Red).`;
+document.getElementById("kpis").innerHTML=[["Machines",D.length,""],["Evaluated",ev,""],["Red · Danger",cnt(D,"R"),"R"],["Orange · Warning",cnt(D,"O"),"O"],["Yellow · Alert",cnt(D,"Y"),"Y"],["Green · Accepted",cnt(D,"G"),"G"],["Not evaluated",cnt(D,"N"),"N"]]
+ .map(([l,v,c])=>`<div class="k"><b>${v}</b><span>${c?shape(c):""}${l}</span></div>`).join("");
+const ORD=["R","O","Y","G","N"];
+document.getElementById("bars").innerHTML=Object.keys(AREA).map(a=>{const s=D.filter(d=>d.a===a);return `<div class="br"><span>${AREA[a]}</span><div class="t" role="img" aria-label="${AREA[a]}: ${ORD.map(c=>cnt(s,c)+" "+CS[c]).join(", ")}">${ORD.map(c=>{const n=cnt(s,c);return n?`<i style="width:${n/s.length*100}%;background:var(--${c})" title="${CS[c]}: ${n}"></i>`:""}).join("")}</div><span class="n">${s.length}</span></div>`}).join("");
+document.getElementById("lg").innerHTML=ORD.map(c=>`<span>${shape(c)}${CS[c]}</span>`).join("");
+/* routing */
+const views=["status","alarms","advisor"];
+const route=()=>{const h=location.hash.slice(1);const v=views.includes(h)?h:"status";views.forEach(x=>{document.getElementById("v-"+x).classList.toggle("on",x===v)});document.querySelectorAll("nav a").forEach(a=>{if(a.dataset.v===v)a.setAttribute("aria-current","page");else a.removeAttribute("aria-current")})};
+addEventListener("hashchange",route);route();
+/* status view */
+["fa","aa"].forEach(id=>{document.getElementById(id).innerHTML+=Object.keys(AREA).map(a=>`<option value="${a}">${AREA[a]}</option>`).join("")});
+let fc=new Set(),sel=null;
+document.getElementById("fc").innerHTML=ORD.map(c=>`<button class="chip" data-c="${c}" aria-pressed="false">${shape(c)}${CS[c]} <span>${cnt(D,c)}</span></button>`).join("");
+document.getElementById("fc").addEventListener("click",e=>{const b=e.target.closest(".chip");if(!b)return;const c=b.dataset.c;fc.has(c)?fc.delete(c):fc.add(c);b.setAttribute("aria-pressed",fc.has(c));drawS()});
+const drawS=()=>{const q=document.getElementById("q").value.trim().toLowerCase(),fa=document.getElementById("fa").value;
+ const s=D.filter(d=>(!fa||d.a===fa)&&(!fc.size||fc.has(d.c))&&(!q||(d.e+" "+d.fl+" "+d.f+" "+d.sn).toLowerCase().includes(q)));
+ document.getElementById("areas").innerHTML=Object.keys(AREA).map(a=>{const t=s.filter(d=>d.a===a).sort((x,y)=>RANK[y.c]-RANK[x.c]||(y.mx||0)-(x.mx||0));if(!t.length)return"";
+  return `<div class="area"><h2>${AREA[a]} <small>${t.length} shown · ${cnt(t,"R")} red · ${cnt(t,"O")} orange</small></h2><div class="grid">${t.map(d=>`<button class="tile ${d.c}${sel===d.id?" sel":""}" data-id="${d.id}" aria-label="${esc(d.e)}, ${CS[d.c]}"><span class="nm">${esc(d.sn)}</span><span class="tg">${esc(d.fl)}</span><span class="st"><span style="display:flex;gap:5px;align-items:center">${shape(d.c)}${CS[d.c]}</span><span class="v">${d.mx!=null?d.mx+" mm/s":"–"}</span></span></button>`).join("")}</div></div>`}).join("")||`<p class="m">No machines match these filters.</p>`};
+document.getElementById("q").addEventListener("input",drawS);document.getElementById("fa").addEventListener("change",drawS);
+const detail=d=>{const sc=12;return `<p class="m">${AREA[d.a]} · ${esc(d.fl)}</p><h3>${esc(d.e)}</h3><p style="display:flex;gap:6px;align-items:center;font-weight:600">${shape(d.c)}${CN[d.c]}</p>
+<p><b>Finding:</b> ${esc(d.f)}</p><p><b>Recommendation:</b> ${esc(d.rec)}</p>
+${d.rd.length?`<div class="rd">${d.rd.map(r=>`<div><div class="l"><span>${esc(r[0])}</span><b>${r[1]} mm/s</b></div><div class="sc" role="img" aria-label="${esc(r[0])} ${r[1]} mm/s"><i style="width:${Math.min(r[1],sc)/sc*100}%"></i>${r[1]>sc?"<em>›</em>":""}</div></div>`).join("")}</div><p class="m">Scale 0–12 mm/s (H horizontal, V vertical, A axial). › means off scale.</p>`:`<p class="m">No readings recorded.</p>`}`};
+document.getElementById("areas").addEventListener("click",e=>{const t=e.target.closest(".tile");if(!t)return;sel=t.dataset.id;const d=D.find(x=>x.id===sel);document.getElementById("det").innerHTML=detail(d);document.querySelectorAll(".tile.sel").forEach(x=>x.classList.remove("sel"));t.classList.add("sel");if(innerWidth<900)document.getElementById("det").scrollIntoView({behavior:"smooth",block:"nearest"})});
+drawS();
+/* alarms */
+let ack=new Set(store.get("ack",[]));let incY=false,hideA=false;
+const alarmSet=()=>{const a=document.getElementById("aa").value;return D.filter(d=>(d.c==="R"||d.c==="O"||(incY&&d.c==="Y"))&&(!a||d.a===a)).sort((x,y)=>RANK[y.c]-RANK[x.c]||(y.mx||0)-(x.mx||0))};
+const drawA=()=>{const s=alarmSet(),v=s.filter(d=>!(hideA&&ack.has(d.id)));
+ document.getElementById("alist").innerHTML=v.map(d=>{const k=ack.has(d.id);return `<div class="ar ${d.c}${k?" ack":""}"><span class="sv">${shape(d.c)}${CS[d.c]}</span><div class="tx"><b>${esc(d.sn)}</b> · ${AREA[d.a]}<div>${esc(d.f)} → ${esc(d.rec)}</div><div>${esc(d.fl)}</div></div><div class="vv">${d.mx!=null?d.mx:"–"}<small>${d.mx!=null?"mm/s · "+esc(d.mp):""}</small></div><button class="btn" data-id="${d.id}">${k?"Acknowledged":"Acknowledge"}</button></div>`}).join("")||`<p class="m">No alarms to show.</p>`;
+ const un=D.filter(d=>(d.c==="R"||d.c==="O")&&!ack.has(d.id)).length;document.getElementById("acnt").textContent=un;document.getElementById("acnt").style.display=un?"":"none"};
+document.getElementById("alist").addEventListener("click",e=>{const b=e.target.closest("button[data-id]");if(!b)return;const id=b.dataset.id;ack.has(id)?ack.delete(id):ack.add(id);store.set("ack",[...ack]);drawA()});
+document.getElementById("aa").addEventListener("change",drawA);
+document.getElementById("ay").addEventListener("click",e=>{incY=!incY;e.currentTarget.setAttribute("aria-pressed",incY);drawA()});
+document.getElementById("ah").addEventListener("click",e=>{hideA=!hideA;e.currentTarget.setAttribute("aria-pressed",hideA);drawA()});
+document.getElementById("aall").addEventListener("click",()=>{alarmSet().forEach(d=>ack.add(d.id));store.set("ack",[...ack]);drawA()});
+document.getElementById("arst").addEventListener("click",()=>{ack.clear();store.set("ack",[]);drawA()});
+drawA();
+/* advisor */
+let rules=Object.assign({},RULE0,store.get("rules",{}));let allowR=false;
+document.getElementById("du").innerHTML=Object.keys(AREA).map(a=>`<option value="${a}">${AREA[a]}${a==="CPH2"?" (station load)":""}</option>`).join("");
+const need=(g,L)=>L<=0?0:Math.max(rules[g][1],Math.ceil(rules[g][0]*L/100));
+const plan=(a,L,aR)=>Object.keys(RULE0).map(g=>{const ms=D.filter(d=>d.a===a&&d.g===g);if(!ms.length)return null;
+ const ord=[...ms].sort((x,y)=>RANK[x.c]-RANK[y.c]||(x.mx||0)-(y.mx||0));const n=Math.min(need(g,L),ms.length);const pool=ord.filter(d=>aR||d.c!=="R");
+ const run=pool.slice(0,n),rest=ord.filter(d=>!run.includes(d));const st=run.length<need(g,L)?"S":run.some(d=>d.c!=="G"&&d.c!=="Y")?"C":"K";
+ return{g,ms,n:need(g,L),run,rest,st}}).filter(Boolean);
+const maxLoad=(a,ok)=>{for(let L=100;L>=0;L-=5){if(plan(a,L,false).every(p=>ok.includes(p.st)))return L}return 0};
+const STS={K:["G","OK"],C:["O","Uses Orange / unverified"],S:["R","Shortfall"]};
+const drawD=()=>{const a=document.getElementById("du").value,L=+document.getElementById("ld").value;document.getElementById("lv").textContent=L+"%";
+ const p=plan(a,L,allowR),mh=maxLoad(a,["K"]),mn=maxLoad(a,["K","C"]);
+ const sh=p.filter(x=>x.st==="S").length,cs=p.filter(x=>x.st==="C").length;
+ document.getElementById("res").innerHTML=`<div class="k"><b>${sh?"Not achievable":cs?"Achievable with risk":"Achievable"}</b><span>${shape(sh?"R":cs?"O":"G")}${L}% load, ${AREA[a]}</span></div>
+ <div class="k"><b>${mh}%</b><span>Max load on Green/Yellow machines only</span></div><div class="k"><b>${mn}%</b><span>Max load without running Red machines</span></div>`;
+ const sb=D.filter(d=>d.a===a&&!RULE0[d.g]&&(d.c==="R"||d.c==="O"));
+ document.getElementById("wn").innerHTML=sb.length?`<div class="warn"><b>Standby readiness:</b> ${sb.map(d=>`${shape(d.c)} ${esc(d.sn)} (${CS[d.c]}${d.mx!=null?", "+d.mx+" mm/s":""})`).join(" · ")}. These back up the main equipment on a trip or at start-up. Restore them before you rely on them.</div>`:"";
+ const tg=d=>`<span class="tag">${shape(d.c)}${esc(d.no)}${d.mx!=null?" · "+d.mx:""}</span>`;
+ document.getElementById("tb").innerHTML=p.map(x=>`<tr><td data-l="Service"><b>${GN[x.g][0]}</b></td><td class="num" data-l="Installed">${x.ms.length}</td>
+ <td class="num" data-l="Full-load duty"><input class="rule" type="number" min="0" max="${x.ms.length}" value="${rules[x.g][0]}" data-g="${x.g}" data-i="0" aria-label="${GN[x.g][0]} full-load duty"></td>
+ <td class="num" data-l="Min running"><input class="rule" type="number" min="0" max="${x.ms.length}" value="${rules[x.g][1]}" data-g="${x.g}" data-i="1" aria-label="${GN[x.g][0]} minimum running"></td>
+ <td class="num" data-l="Needed">${x.n}</td><td data-l="Run"><div class="tags">${x.run.map(tg).join("")||"–"}</div></td><td data-l="Standby / do not run"><div class="tags">${x.rest.map(tg).join("")||"–"}</div></td>
+ <td data-l="Status"><span class="ok">${shape(STS[x.st][0])}${STS[x.st][1]}</span></td></tr>`).join("")};
+document.getElementById("tb").addEventListener("change",e=>{const i=e.target.closest(".rule");if(!i)return;const v=Math.max(0,Math.min(+i.max,Math.round(+i.value||0)));rules[i.dataset.g]=[...rules[i.dataset.g]];rules[i.dataset.g][+i.dataset.i]=v;
+ const o={};Object.keys(rules).forEach(g=>{if(rules[g].join()!==RULE0[g].join())o[g]=rules[g]});store.set("rules",o);drawD()});
+document.getElementById("du").addEventListener("change",drawD);document.getElementById("ld").addEventListener("input",drawD);
+document.getElementById("ar").addEventListener("click",e=>{allowR=!allowR;e.currentTarget.setAttribute("aria-pressed",allowR);drawD()});
+drawD();
+}
+</script>
+</body>
+</html>
